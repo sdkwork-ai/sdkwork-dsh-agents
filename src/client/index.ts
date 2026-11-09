@@ -2043,48 +2043,6 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
   let syncSettingsSection: (() => void) | undefined
   let unmountSettingsSection: (() => void) | undefined
 
-  const sidebarController = setupSidebarEntry(ctx, {
-    callApi,
-    renderPanel: (ownerProps: any) => React.createElement(AgencySettingsPanel, {
-      ...ownerProps,
-      closeSettings: () => {
-        const layout = ctx.get('layout') as any
-        if (typeof layout?.selectPanel === 'function') {
-          layout.selectPanel(null)
-        }
-      },
-      remote,
-      getActive,
-      onEnabledChange: updateEnabledForMentions,
-      prepareTeamSelection: bindExpertInsertion().prepareTeamSelection,
-    }),
-    ns: NS,
-    injectProps: () => ({
-      remote,
-      getActive,
-      onEnabledChange: updateEnabledForMentions,
-      prepareTeamSelection: bindExpertInsertion().prepareTeamSelection,
-    }),
-    onOnlineUpdateChange: () => {
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(PLUGIN_UPDATE_TOGGLE_EVENT))
-    },
-  })
-  ctx.effect(() => () => {
-    sidebarController.destroy()
-    unmountSettingsSection?.()
-  }, 'agency-agents: sidebar entry')
-
-  ctx.effect(() => observePluginUpdate({
-    endpoint: '/api/michengai/dsh-agency-agents/update',
-    packageName: '@michengai/dsh-agency-agents',
-    titleRowSelector: '.aag-title-row',
-    linksSelector: '.aag-settings-links',
-    zhName: '专家',
-    enName: 'Experts',
-    createIcon: createPluginUpdateIcon,
-    isEnabled: () => sidebarController.isOnlineUpdateEnabled(),
-  }), 'agency-agents: plugin update ui')
-
   let enabledForMentions: ReadonlySet<string> | undefined
   const lexiconListeners = new Set<() => void>()
   const updateEnabledForMentions = (enabled: ReadonlySet<string>): void => {
@@ -2173,6 +2131,53 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       },
     }
   }
+
+  // The sidebar entry registers the `main` panel whose injected face closes over
+  // this scope, and a page that embeds that panel (the expert market's Experts
+  // tab) resolves the face the moment the registration lands. Every binding the
+  // face reads — `updateEnabledForMentions`, `bindExpertInsertion` — must
+  // therefore be initialized before this call, not merely before the face runs.
+  const sidebarController = setupSidebarEntry(ctx, {
+    callApi,
+    renderPanel: (ownerProps: any) => React.createElement(AgencySettingsPanel, {
+      ...ownerProps,
+      closeSettings: () => {
+        const layout = ctx.get('layout') as any
+        if (typeof layout?.selectPanel === 'function') {
+          layout.selectPanel(null)
+        }
+      },
+      remote,
+      getActive,
+      onEnabledChange: updateEnabledForMentions,
+      prepareTeamSelection: bindExpertInsertion().prepareTeamSelection,
+    }),
+    ns: NS,
+    injectProps: () => ({
+      remote,
+      getActive,
+      onEnabledChange: updateEnabledForMentions,
+      prepareTeamSelection: bindExpertInsertion().prepareTeamSelection,
+    }),
+    onOnlineUpdateChange: () => {
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(PLUGIN_UPDATE_TOGGLE_EVENT))
+    },
+  })
+  ctx.effect(() => () => {
+    sidebarController.destroy()
+    unmountSettingsSection?.()
+  }, 'agency-agents: sidebar entry')
+
+  ctx.effect(() => observePluginUpdate({
+    endpoint: '/api/michengai/dsh-agency-agents/update',
+    packageName: '@michengai/dsh-agency-agents',
+    titleRowSelector: '.aag-title-row',
+    linksSelector: '.aag-settings-links',
+    zhName: '专家',
+    enName: 'Experts',
+    createIcon: createPluginUpdateIcon,
+    isEnabled: () => sidebarController.isOnlineUpdateEnabled(),
+  }), 'agency-agents: plugin update ui')
 
   let offSettingsSection: (() => void) | null = null
   let offSettingsIcon: (() => void) | null = null
