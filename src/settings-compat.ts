@@ -253,9 +253,9 @@ export async function recoverImportedAgencySettings(
 ): Promise<void> {
   // 根上下文同 hmrStore 走 rootOf；loader 用 reflect.get 动态读取（属性式读取
   // 在宿主 Cordis 4.1 下会抛 inject 错误），等待宿主完成一次性 settings 导入。
-  const loader = rootOf(ctx).reflect.get('loader', false) as
-    | { await?: () => Promise<unknown> }
-    | undefined
+  // 测试可能传入只有部分表面的 mock，reflect 缺失时与旧属性读取一样视为无 loader。
+  const loader = (rootOf(ctx) as { reflect?: { get?: (name: string, strict?: boolean) => unknown } })
+    .reflect?.get?.('loader', false) as { await?: () => Promise<unknown> } | undefined
   try {
     await loader?.await?.()
   } catch {
