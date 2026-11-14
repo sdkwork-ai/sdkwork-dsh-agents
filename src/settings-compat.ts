@@ -1,4 +1,4 @@
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { createRequire } from 'node:module'
 import { existsSync, realpathSync, readFileSync, writeFileSync } from 'node:fs'
@@ -196,8 +196,28 @@ type HmrStore = {
   exit?: <T>(callback: () => T) => T
 }
 
+/**
+ * 读根上下文。Cordis 4.1 起 `ctx.root` 属性读取未声明 inject 会抛错
+ * （"cannot get property root without inject"），宿主改走 `ctx[Context.root]`
+ * 符号；4.0.5 的类型与运行时没有该静态符号，`root` 仍是实例自有字段。
+ * 先探测符号形态，缺失时退回属性读取，两种 Cordis 都可用。
+ */
+function rootOf(ctx: Context): Context {
+  // 符号从 ctx 自己的构造器上探测：插件导入的 Cordis 版本不必与宿主一致，
+  // 宿主 4.1 的符号挂在宿主的 Context 类上。4.0.5 没有该静态符号，`root`
+  // 是实例自有字段，走属性读取。
+  const ctor = ctx.constructor as typeof Context
+  const symbol = (ctor as { readonly root?: unique symbol }).root
+  if (typeof symbol === 'symbol') {
+    const viaSymbol = Reflect.get(ctx, symbol) as Context | undefined
+    if (viaSymbol !== undefined) return viaSymbol
+  }
+  return (ctx as { root?: Context }).root ?? ctx
+}
+
 function hmrStore(ctx: Context): HmrStore | undefined {
-  const scopes = [ctx, (ctx as { root?: Context }).root].filter((scope): scope is Context => scope !== undefined)
+  const root = rootOf(ctx)
+  const scopes = root === ctx ? [ctx] : [ctx, root]
   for (const scope of scopes) {
     try {
       const hmr = (scope as { get?: (name: string) => unknown }).get?.('hmr') as { executing?: HmrStore } | undefined
@@ -231,7 +251,11 @@ export async function recoverImportedAgencySettings(
   parse: (text: string) => unknown = parseHostYaml,
   locale: 'zh' | 'en' = 'zh',
 ): Promise<void> {
-  const loader = (ctx as Context & { root?: { loader?: { await?: () => Promise<unknown> } } }).root?.loader
+  // 根上下文同 hmrStore 走 rootOf；loader 用 reflect.get 动态读取（属性式读取
+  // 在宿主 Cordis 4.1 下会抛 inject 错误），等待宿主完成一次性 settings 导入。
+  const loader = rootOf(ctx).reflect.get('loader', false) as
+    | { await?: () => Promise<unknown> }
+    | undefined
   try {
     await loader?.await?.()
   } catch {
