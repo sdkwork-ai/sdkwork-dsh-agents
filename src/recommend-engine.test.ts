@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type React from 'react'
 import { extractTaskKeywords, recommendExpertsForTask } from './recommend-engine.js'
 import { resolveRecommendInputs, buildRecommendMenuItems } from './client/recommend-bar.js'
 import type { ExpertSearchable } from './client/index.js'
@@ -181,26 +182,31 @@ describe('recommend-engine 本地极速推荐引擎', () => {
     const itemsZh = buildRecommendMenuItems(mockCandidates, 'zh')
     expect(itemsZh).toHaveLength(2)
 
+    // React 19 的 ReactElement.props 默认 unknown；断言只关心这两类元素形状，
+    // 统一从这里收窄，避免每个断言各自断言。
+    const propsOf = (node: React.ReactNode): { className?: string; children?: React.ReactNode[] } =>
+      (node as React.ReactElement).props as { className?: string; children?: React.ReactNode[] }
+
     // 专家项断言
     const expertItem = itemsZh[0]
     expect(expertItem.id).toBe('marketing-xiaohongshu-expert')
-    expect(expertItem.label.props.className).toBe('aag-hero-menu-item')
-    const expertRow1 = expertItem.label.props.children[0]
-    const expertDesc = expertItem.label.props.children[1]
-    expect(expertRow1.props.children[0].props.children).toBe('小红书增长运营专家')
-    expect(expertRow1.props.children[1]).toBeNull() // 个人专家无团队标签
-    expect(expertDesc.props.children).toBe('精准命中「小红书」业务关键词，擅长爆款笔记打造。')
+    expect(propsOf(expertItem.label).className).toBe('aag-hero-menu-item')
+    const expertRow1 = propsOf(expertItem.label).children?.[0]
+    const expertDesc = propsOf(expertItem.label).children?.[1]
+    expect(propsOf(propsOf(expertRow1).children?.[0]).children).toBe('小红书增长运营专家')
+    expect(propsOf(expertRow1).children?.[1]).toBeNull() // 个人专家无团队标签
+    expect(propsOf(expertDesc).children).toBe('精准命中「小红书」业务关键词，擅长爆款笔记打造。')
 
     // 团队项断言
     const teamItem = itemsZh[1]
     expect(teamItem.id).toBe('team-technical-review')
-    const teamRow1 = teamItem.label.props.children[0]
-    expect(teamRow1.props.children[0].props.children).toBe('技术评审团')
-    expect(teamRow1.props.children[1].props.children).toBe('团队')
+    const teamRow1 = propsOf(teamItem.label).children?.[0]
+    expect(propsOf(propsOf(teamRow1).children?.[0]).children).toBe('技术评审团')
+    expect(propsOf(propsOf(teamRow1).children?.[1]).children).toBe('团队')
 
     // 英文 locale 断言
     const itemsEn = buildRecommendMenuItems(mockCandidates, 'en')
-    const teamRow1En = itemsEn[1].label.props.children[0]
-    expect(teamRow1En.props.children[1].props.children).toBe('Team')
+    const teamRow1En = propsOf(itemsEn[1].label).children?.[0]
+    expect(propsOf(propsOf(teamRow1En).children?.[1]).children).toBe('Team')
   })
 })

@@ -203,11 +203,10 @@ type HmrStore = {
  * 先探测符号形态，缺失时退回属性读取，两种 Cordis 都可用。
  */
 function rootOf(ctx: Context): Context {
-  // 符号从 ctx 自己的构造器上探测：插件导入的 Cordis 版本不必与宿主一致，
-  // 宿主 4.1 的符号挂在宿主的 Context 类上。4.0.5 没有该静态符号，`root`
-  // 是实例自有字段，走属性读取。
-  const ctor = ctx.constructor as typeof Context
-  const symbol = (ctor as { readonly root?: unique symbol }).root
+  // 符号从 ctx 自己的构造器上探测（Reflect.get 不经静态类型，4.1 的
+  // `Context.root` 静态与 4.0.5 的缺失都不影响编译）：插件导入的 Cordis 版本
+  // 不必与宿主一致。探测不到符号时 `root` 是实例自有字段，走属性读取。
+  const symbol = Reflect.get(ctx.constructor, 'root') as symbol | undefined
   if (typeof symbol === 'symbol') {
     const viaSymbol = Reflect.get(ctx, symbol) as Context | undefined
     if (viaSymbol !== undefined) return viaSymbol
