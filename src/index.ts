@@ -49,8 +49,7 @@ import { TextDecoder } from 'node:util'
 import { ZH_DIVISION, ZH_NAME } from './names.js'
 export { ZH_NAME }
 import { createHostLocaleReader, formatHost, localizedExpertDescription, localizedExpertName, matchDivision, renderExpertList, renderSummonResults, type LocaleId } from './i18n.js'
-import { isLiveValue, loadHostModule, readAgencySettings, recoverImportedAgencySettings, settingsNamespaceCompat, setAgencySidebarEntry, setAgencyOnlineUpdate, setAgencyComposerRecommend, getAgencyEntryLocation, setAgencyEntryLocation } from './settings-compat.js'
-import { registerPluginUpdater } from './plugin-updater.js'
+import { isLiveValue, loadHostModule, readAgencySettings, recoverImportedAgencySettings, settingsNamespaceCompat, setAgencySidebarEntry, setAgencyComposerRecommend, getAgencyEntryLocation, setAgencyEntryLocation } from './settings-compat.js'
 import { AGENCY_LIBRARY_SERVICE, createExpertLibrary, type AgencySettings } from './expert-library.js'
 
 export const name = 'agency-agents'
@@ -88,12 +87,22 @@ const DESCRIPTION_LIMIT = 120
 export const SUMMON_EXPERTS_MAX = 8
 /** 批量召唤的并发上限。 */
 export const SUMMON_EXPERTS_CONCURRENCY = 4
-/** 单条任务的 Unicode 码点上限。本机实测单条约 3200 字时工具 JSON 仍合法，约 7200 字时未转义引号会让宿主在专家启动前结束回合。2000 是给目标、约束和路径留的余量，不是算出的安全边界。 */
-export const SUMMON_TASK_MAX_CHARS = 2000
+/** 单条任务的 Unicode 码点上限。默认 3000。本机实测单条约 3200 字时工具 JSON 仍合法，约 7200 字时未转义引号会让宿主在专家启动前结束回合。 */
+export const SUMMON_TASK_MAX_CHARS = 3000
+export const SUMMON_TASK_MIN_LIMIT = 200
+export const SUMMON_TASK_MAX_LIMIT = 4000
+
+/** 规范化单条任务字符上限：缺省使用默认 3000，越界值钳制在 200–4000 安全区间。 */
+export function normalizeSummonTaskMaxChars(value: unknown): number {
+  if (value === undefined || value === null) return SUMMON_TASK_MAX_CHARS
+  if (typeof value !== 'number' || !Number.isFinite(value)) return SUMMON_TASK_MAX_CHARS
+  const int = Math.round(value)
+  return Math.max(SUMMON_TASK_MIN_LIMIT, Math.min(SUMMON_TASK_MAX_LIMIT, int))
+}
 
 /** 召唤参数说明。模型把带引号的源码写进工具 JSON 时，宿主会在执行前拒绝整轮。 */
-function summonTaskDescription(scope: 'single' | 'member'): string {
-  const shared = `Short brief only: the user goal, constraints, and file paths. Do not paste source, CSS, HTML, or quoted code; an unescaped quote makes the tool JSON invalid and no expert starts. At most ${SUMMON_TASK_MAX_CHARS} characters. The expert reads the files itself.`
+function summonTaskDescription(scope: 'single' | 'member', maxChars: number = SUMMON_TASK_MAX_CHARS): string {
+  const shared = `Short brief only: the user goal, constraints, and file paths. Do not paste source, CSS, HTML, or quoted code; an unescaped quote makes the tool JSON invalid and no expert starts. At most ${maxChars} characters. The expert reads the files itself.`
   return scope === 'member'
     ? `${shared} One sentence of this expert's role is enough; do not repeat a long brief for every expert.`
     : shared
@@ -117,7 +126,7 @@ export interface SummonExpertItemResult {
  * 校验并规范化任务文本：非空且不超过码点上限。
  * index 存在时使用带序号的批量文案，否则使用单条召唤文案；返回规范化后的字符串。
  */
-function normalizeTask(task: unknown, locale: LocaleId, index?: number): string {
+function normalizeTask(task: unknown, locale: LocaleId, index?: number, maxChars: number = SUMMON_TASK_MAX_CHARS): string {
   const text = task === undefined || task === null ? '' : String(task)
   const length = Array.from(text).length
   if (text.trim() === '') {
@@ -125,16 +134,16 @@ function normalizeTask(task: unknown, locale: LocaleId, index?: number): string 
       ? formatHost(locale, 'error.taskRequired')
       : formatHost(locale, 'error.taskEmpty', { index }))
   }
-  if (length > SUMMON_TASK_MAX_CHARS) {
+  if (length > maxChars) {
     throw new Error(index === undefined
-      ? formatHost(locale, 'error.taskLimit', { length, max: SUMMON_TASK_MAX_CHARS })
-      : formatHost(locale, 'error.taskTooLong', { index, length, max: SUMMON_TASK_MAX_CHARS }))
+      ? formatHost(locale, 'error.taskLimit', { length, max: maxChars })
+      : formatHost(locale, 'error.taskTooLong', { index, length, max: maxChars }))
   }
   return text
 }
 
 /** 校验批量召唤入参：非空、数量上限、专家名非空、任务非空且不超过码点上限。 */
-export function validateSummonSpecs(specs: unknown, locale: LocaleId): SummonExpertSpec[] {
+export function validateSummonSpecs(specs: unknown, locale: LocaleId, maxChars: number = SUMMON_TASK_MAX_CHARS): SummonExpertSpec[] {
   if (!Array.isArray(specs) || specs.length === 0) {
     throw new Error(formatHost(locale, 'error.expertsEmpty'))
   }
@@ -147,7 +156,7 @@ export function validateSummonSpecs(specs: unknown, locale: LocaleId): SummonExp
     if (expert === undefined || expert === null || String(expert).trim() === '') {
       throw new Error(formatHost(locale, 'error.expertEmpty', { index: index + 1 }))
     }
-    const task = normalizeTask(record?.task, locale, index + 1)
+    const task = normalizeTask(record?.task, locale, index + 1, maxChars)
     return { expert, task }
   })
 }
@@ -204,9 +213,9 @@ export interface Config {
   divisions: string[]
   /** 可选的正整数绝对子代理深度上限；未设置时沿用 provider 的默认行为。 */
   maxDepth?: number
-  updater?: boolean
-  onlineUpdate?: boolean
   sidebarEntry?: boolean
+  /** 单条专家召唤任务的 Unicode 码点上限。默认 3000，超出 200–4000 安全区间时会被自动钳制。 */
+  summonTaskMaxChars?: number
 }
 
 /** 未在配置中显式提供 `root` 时，先读取该环境变量，再使用随包发布的智能体目录。 */
@@ -242,8 +251,7 @@ const configFields: Record<string, unknown> = {
   divisions: schema.array(schema.string()).default(DEFAULT_DIVISIONS),
   // schemastery 没有 .optional()：未调用 .required() 的字段本身即可选，缺省不参与校验
   maxDepth: schema.natural().min(1),
-  updater: schema.boolean(),
-  onlineUpdate: schema.boolean(),
+  summonTaskMaxChars: schema.natural().min(SUMMON_TASK_MIN_LIMIT).max(SUMMON_TASK_MAX_LIMIT).default(SUMMON_TASK_MAX_CHARS),
   entryLocation: schema.string(),
   sidebarEntry: schema.boolean(),
   composerRecommend: schema.boolean(),
@@ -255,8 +263,8 @@ for (const [key, field] of [
   ['enabledTeams', schema.array(schema.string()).default([])],
   ['entryLocation', schema.string()],
   ['sidebarEntry', schema.boolean()],
-  ['onlineUpdate', schema.boolean()],
   ['composerRecommend', schema.boolean()],
+  ['summonTaskMaxChars', schema.natural().min(SUMMON_TASK_MIN_LIMIT).max(SUMMON_TASK_MAX_LIMIT).default(SUMMON_TASK_MAX_CHARS)],
 ] as Array<readonly [string, z<any>]>) {
   const live = markLiveFields ? liveSchemaField(field) : undefined
   if (live !== undefined) configFields[key] = live
@@ -620,8 +628,8 @@ async function readJsonBody(request: { on(event: string, listener: (...args: unk
 }
 
 export function apply(ctx: Context, config: Config): void {
-  const hostUpdateDisabled = (config as { updater?: unknown }).updater === false
   const maxDepth = normalizeMaxDepth(config.maxDepth)
+  const getTaskMaxChars = (): number => normalizeSummonTaskMaxChars(config.summonTaskMaxChars)
   const settingsNamespace = settingsNamespaceCompat('agency-agents')
   let settingsSource: () => AgencySettings = () => ({ enabled: [], customExperts: [] })
   const enabledSet = (): ReadonlySet<string> => new Set(settingsSource().enabled)
@@ -677,11 +685,26 @@ export function apply(ctx: Context, config: Config): void {
     let config = getSubagentConfig(agent.id)
     if (!config) {
       const agentTeams = ctx.get?.('agentTeams') as NativeTeamService | undefined
-      const membership = agentTeams?.tryMembership?.(agent)
+      const membership = typeof agentTeams?.tryMembership === 'function' ? agentTeams.tryMembership(agent) : undefined
       if (membership?.role === 'teammate' && isAgencyTeammateName(membership.name)) {
         const nativeSetup = getNativeTeammateSetup(membership.name)
         config = {
           toolFilter: nativeSetup?.toolFilter ?? { deny: [...EXPERT_TOOL_DENY] },
+        }
+      } else {
+        const subagents = ctx.get?.('subagents') as { namesOf?: (a: object) => { self?: string } } | undefined
+        let selfName: string | undefined
+        try {
+          selfName = typeof subagents?.namesOf === 'function' ? subagents.namesOf(agent)?.self : undefined
+        } catch {
+          selfName = undefined
+        }
+        const leaf = selfName?.split('/').at(-1)
+        if (leaf && isAgencyTeammateName(leaf)) {
+          const nativeSetup = getNativeTeammateSetup(leaf)
+          config = {
+            toolFilter: nativeSetup?.toolFilter ?? { deny: [...EXPERT_TOOL_DENY] },
+          }
         }
       }
     }
@@ -704,7 +727,7 @@ export function apply(ctx: Context, config: Config): void {
     return undefined
   })
   ctx.on?.('tools/pre-execute', async (exec, next) => {
-    if (blocksNativeDelegation(ctx.get('agentTeams'), exec.agent, exec.name)) return { kind: 'deny', reason: teamTx('专家团成员不能继续创建子代理或扩展专家团，请将缺口交给主理人。') }
+    if (blocksNativeDelegation(ctx.get('agentTeams'), exec.agent, exec.name, ctx.get('subagents'))) return { kind: 'deny', reason: teamTx('专家团成员不能继续创建子代理或扩展专家团，请将缺口交给主理人。') }
     const agentId = exec.agent?.id
     if (agentId && isManagedSubagentId(agentId) && (EXPERT_TOOL_DENY as readonly string[]).includes(exec.name)) {
       return { kind: 'deny', reason: teamTx('专家成员不能继续召唤专家团。') }
@@ -725,15 +748,6 @@ export function apply(ctx: Context, config: Config): void {
 
   const webServer = (ctx as Context & { webServer?: { register?: (route: any) => () => void } }).webServer
   if (typeof webServer?.register === 'function') {
-    const mountUpdater = () => registerPluginUpdater(ctx, {
-      endpoint: '/api/michengai/dsh-agency-agents/update',
-      packageName: '@michengai/dsh-agency-agents',
-      manifestUrl: new URL('../package.json', import.meta.url),
-      isEnabled: async () => !hostUpdateDisabled && settingsSource().onlineUpdate !== false,
-    })
-    if (typeof ctx.effect === 'function') ctx.effect(mountUpdater, 'agency-agents: plugin updater')
-    else mountUpdater()
-
     const registerApiRoutes = () => {
       const checkAuthAndMutation = (request: any, response: any): boolean => {
         let connection: { requestRejection?: (request: { headers: any }) => 401 | 403 | undefined } | undefined
@@ -799,47 +813,6 @@ export function apply(ctx: Context, config: Config): void {
               }
               response.writeHead(400, { 'content-type': 'application/json; charset=utf-8' })
               response.end(JSON.stringify({ ok: false, error: '缺少合法的 location 或 enabled 参数' }))
-            } catch (err) {
-              response.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
-              response.end(JSON.stringify({ ok: false, error: String(err) }))
-            }
-            return
-          }
-          response.writeHead(405, { allow: 'GET, HEAD, POST' })
-          response.end()
-        },
-      }))
-
-      disposers.push(webServer.register!({
-        kind: 'exact',
-        path: '/api/michengai/dsh-agency-agents/online-update',
-        handler: async (request: any, response: any) => {
-          if (!checkAuthAndMutation(request, response)) return
-          if (request.method === 'GET' || request.method === 'HEAD') {
-            response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
-            response.end(request.method === 'HEAD' ? undefined : JSON.stringify({
-              ok: true,
-              enabled: !hostUpdateDisabled && settingsSource().onlineUpdate !== false,
-              locked: hostUpdateDisabled,
-            }))
-            return
-          }
-          if (request.method === 'POST') {
-            if (hostUpdateDisabled) {
-              response.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
-              response.end(JSON.stringify({ ok: false, error: '在线更新已被宿主配置锁定禁用' }))
-              return
-            }
-            const bodyRes = await readJsonBody(request)
-            if (!bodyRes.ok || !bodyRes.data || typeof bodyRes.data.enabled !== 'boolean') {
-              response.writeHead(bodyRes.status ?? 400, { 'content-type': 'application/json; charset=utf-8' })
-              response.end(JSON.stringify({ ok: false, error: bodyRes.error ?? 'enabled 必须是布尔值' }))
-              return
-            }
-            try {
-              await setAgencyOnlineUpdate(ctx, settingsNamespace, bodyRes.data.enabled)
-              response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-              response.end(JSON.stringify({ ok: true, enabled: bodyRes.data.enabled }))
             } catch (err) {
               response.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
               response.end(JSON.stringify({ ok: false, error: String(err) }))
@@ -1028,35 +1001,59 @@ export function apply(ctx: Context, config: Config): void {
 
   async function startSubagentRun(providerName: string, options: ExpertSubagentStart): Promise<SubagentRunHandle> {
     const { slug, persona, toolFilter, label, signal, prompt, parent, maxDepth } = options
+    type LegacyActivationSpec = {
+      provider: string
+      label: string
+      childId?: ReturnType<typeof SessionId>
+      request: Omit<SubagentStartRequest, 'label' | 'signal'>
+      signal: AbortSignal
+      delivery: 'parent' | 'caller'
+    }
+    type FlatActivationSpec = Omit<SubagentStartRequest, 'label' | 'signal'> & {
+      provider: string
+      label: string
+      name?: string
+      childId?: ReturnType<typeof SessionId>
+      signal: AbortSignal
+      delivery: 'parent' | 'caller'
+    }
     const service = ctx.subagents as unknown as {
       start?: (name: string, request: SubagentStartRequest & { persona?: string; toolFilter?: { deny: string[] } }) => Promise<SubagentRun>
-      startActivation?: (spec: {
-        provider: string
-        label: string
-        childId?: ReturnType<typeof SessionId>
-        request: Omit<SubagentStartRequest, 'label' | 'signal'>
-        signal: AbortSignal
-        delivery: 'parent' | 'caller'
-      }) => Promise<SubagentRunHandle>
+      startActivation?: (spec: LegacyActivationSpec | FlatActivationSpec) => Promise<SubagentRunHandle>
+      namesOf?: unknown
+      rootOf?: unknown
     }
     const runSignal = signal ?? new AbortController().signal
-    // DSH 0.2.1-rc.1+: 优先使用 startActivation，由持久注册表守护首次启动与后续冷恢复。
+    // DSH 0.2.1-rc.1+: 优先使用 startActivation，由持久注册表守护首次启动与后续冷恢复；
+    // 0.2.2-rc.2+ 起 SubagentRuntime 提供 namesOf/rootOf 且 startActivation 改为顶层平铺字段（无 request 包装）。
     if (typeof service.startActivation === 'function') {
       const childId = SessionId(randomUUID())
       recordSubagentConfig(childId, { slug, persona, toolFilter }, ctx)
+      const usesFlatSpec = typeof service.namesOf === 'function' || typeof service.rootOf === 'function'
+      const requestPayload = {
+        parent,
+        prompt,
+        ...(maxDepth === undefined ? {} : { maxDepth }),
+      }
+      const spec: LegacyActivationSpec | FlatActivationSpec = usesFlatSpec
+        ? {
+            provider: providerName,
+            label: label ?? providerName,
+            childId,
+            ...requestPayload,
+            signal: runSignal,
+            delivery: 'caller',
+          }
+        : {
+            provider: providerName,
+            label: label ?? providerName,
+            childId,
+            request: requestPayload,
+            signal: runSignal,
+            delivery: 'caller',
+          }
       try {
-        return await service.startActivation({
-          provider: providerName,
-          label: label ?? providerName,
-          childId,
-          request: {
-            parent,
-            prompt,
-            ...(maxDepth === undefined ? {} : { maxDepth }),
-          },
-          signal: runSignal,
-          delivery: 'caller',
-        })
+        return await service.startActivation(spec)
       } catch (error) {
         // 创建失败时撤回记录：幻影条目会占住条目配额与门禁清单，把真实子代理更早挤出去
         forgetSubagentConfig(childId, ctx)
@@ -1081,7 +1078,7 @@ export function apply(ctx: Context, config: Config): void {
   async function runExpert(query: unknown, task: unknown, exec: ToolRunContext): Promise<{ expert: string; answer: string }> {
     const locale = activeLocale()
     // 单条与批量召唤共用同一套任务校验，避免单条路径绕过码点上限
-    const taskText = normalizeTask(task, locale)
+    const taskText = normalizeTask(task, locale, undefined, getTaskMaxChars())
     if (exec.agent === undefined) throw new Error(formatHost(locale, 'error.summonRequiresAgent'))
     const provider = ctx.subagents.getProvider(config.provider)
     if (provider === undefined) throw new Error(formatHost(locale, 'error.providerMissing', { provider: config.provider }))
@@ -1119,7 +1116,7 @@ export function apply(ctx: Context, config: Config): void {
     description: "Summon a domain expert from The Agency roster to complete a task: a specialist subagent runs with that expert's full persona and returns its result. If the user already named this expert, call this immediately. Do not read the project or do the analysis yourself. Call list_experts first only if you do not know the expert name.",
     parameters: {
       expert: { type: 'string', required: true, description: 'Expert name to summon (e.g. "Frontend Developer").' },
-      task: { type: 'string', required: true, description: summonTaskDescription('single') },
+      task: { type: 'string', required: true, description: summonTaskDescription('single', getTaskMaxChars()) },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { expert: { type: 'string', required: true }, answer: { type: 'string', required: true } } },
@@ -1144,7 +1141,7 @@ export function apply(ctx: Context, config: Config): void {
           additionalProperties: false,
           properties: {
             expert: { type: 'string', required: true, description: 'Expert name (e.g. "Frontend Developer").' },
-            task: { type: 'string', required: true, description: summonTaskDescription('member') },
+            task: { type: 'string', required: true, description: summonTaskDescription('member', getTaskMaxChars()) },
           },
         },
       },
@@ -1160,7 +1157,7 @@ export function apply(ctx: Context, config: Config): void {
       await ensureReady()
       const locale = activeLocale()
       if (exec.agent === undefined) throw new Error(formatHost(locale, 'error.summonManyRequiresAgent'))
-      const specs = validateSummonSpecs(args.experts, locale)
+      const specs = validateSummonSpecs(args.experts, locale, getTaskMaxChars())
       const results = await mapPool(specs, SUMMON_EXPERTS_CONCURRENCY, async (spec) => {
         try {
           return toSummonItemResult(spec.expert, await runExpert(spec.expert, spec.task, exec))
@@ -1223,8 +1220,8 @@ ctx.tools.register(localizeTeamTool(defineTool({ name: 'summon_expert_team', des
         const locale = activeLocale();
         if (engine.status.mode === 'native' && engine.service) {
             const result = await dispatchNativeTeam({ team, locale, experts: catalog.experts, enabled: catalog.enabled, task: String(args.task ?? ''), revision: snapshot.revision,
-                signal: exec.signal, agent: exec.agent!, service: engine.service, provider: config.provider,
-                readPersona: async (expert) => (await personaSource.getPrompt(expert.slug, expert.division, locale)).prompt });
+                signal: exec.signal, agent: exec.agent!, service: engine.service, subagents: engine.subagents, ctx, provider: config.provider,
+                readPersona: async (expert) => sanitize((await personaSource.getPrompt(expert.slug, expert.division, locale)).prompt) });
             return { report: JSON.stringify({ ...result, engine: engine.status }) };
         }
         const provider = ctx.subagents.getProvider(config.provider);
@@ -1518,7 +1515,7 @@ ctx.systemPrompt.section({ name: 'agency:teams', order: 118, text: context => {
     text: (context) => {
       const agent = (context as { agent?: { session?: { header?: { parentSession?: unknown } } } }).agent
       if (agent?.session?.header?.parentSession !== undefined) return ''
-      return '## Agency expert mode\nThe parent session has a roster of domain experts from The Agency (specialists across 22 divisions, individually enable/disable; ALL are disabled by default, and the user enables some in the Agency settings tab). A composer selection inserts one enabled expert as a native reference chip; all remaining draft text is that expert\'s task. When the user message already names experts, call summon_expert or summon_experts immediately. Summarize that message into the user goal, constraints, and file paths; do not pass the raw text when it is long. Do not call list_experts, read the project, or do the analysis yourself. Experts read the files and produce the analysis; the parent only synthesizes their results. Call list_experts only when the user did not name an expert. summon_experts runs at most 8 experts; partial results are returned if some fail. A disabled expert cannot be summoned. When calling either tool, pass only a short brief: the user goal, constraints, and file paths. Do not paste source, CSS, HTML, or quoted code into the tool argument; an unescaped quote makes the JSON invalid and no expert starts. Each task must stay within ' + SUMMON_TASK_MAX_CHARS + ' characters. Experts read the files themselves.\nWhen the user asks to create, design, or customize an expert persona (e.g. "我想创建一个专家...", "创建小红书运营专家", "新建专家"), call propose_custom_expert. You MUST ALWAYS present a full, polished preview in your response text (name, division, description, and detailed system prompt breakdown) so the user can read and review it first. Invite the user to suggest modifications in chat. Only when the user explicitly confirms (e.g. says "确认", "就按这个", "打开弹窗", "满意"), call open_custom_expert_editor to open the modal. Do NOT tell the user to manually copy-paste, and do NOT write markdown files to docs/. When the user asks to assemble, design, or create an expert team (e.g. "帮我组建一个专家团队...", "创建专家团"), call propose_expert_team. Always present team members using their localized names (e.g. 中文名如「产品经理」、「代码审查工程师」) alongside their slug, duties, and reasons in your chat preview. Do NOT tell the user to click non-existent links; instead, inform them that they can review the draft and say "确认" when satisfied. When the user explicitly confirms (e.g. says "确认", "就按这个", "满意", "打开弹窗"), call open_expert_team_editor (or open_custom_expert_editor), which will present an interactive confirmation card before popping up the full editor dialog.'
+      return '## Agency expert mode\nThe parent session has a roster of domain experts from The Agency (specialists across 22 divisions, individually enable/disable; ALL are disabled by default, and the user enables some in the Agency settings tab). A composer selection inserts one enabled expert as a native reference chip; all remaining draft text is that expert\'s task. When the user message already names experts, call summon_expert or summon_experts immediately. Summarize that message into the user goal, constraints, and file paths; do not pass the raw text when it is long. Do not call list_experts, read the project, or do the analysis yourself. Experts read the files and produce the analysis; the parent only synthesizes their results. Call list_experts only when the user did not name an expert. summon_experts runs at most 8 experts; partial results are returned if some fail. A disabled expert cannot be summoned. When calling either tool, pass only a short brief: the user goal, constraints, and file paths. Do not paste source, CSS, HTML, or quoted code into the tool argument; an unescaped quote makes the JSON invalid and no expert starts. Each task must stay within ' + getTaskMaxChars() + ' characters. Experts read the files themselves.\nWhen the user asks to create, design, or customize an expert persona (e.g. "我想创建一个专家...", "创建小红书运营专家", "新建专家"), call propose_custom_expert. You MUST ALWAYS present a full, polished preview in your response text (name, division, description, and detailed system prompt breakdown) so the user can read and review it first. Invite the user to suggest modifications in chat. Only when the user explicitly confirms (e.g. says "确认", "就按这个", "打开弹窗", "满意"), call open_custom_expert_editor to open the modal. Do NOT tell the user to manually copy-paste, and do NOT write markdown files to docs/. When the user asks to assemble, design, or create an expert team (e.g. "帮我组建一个专家团队...", "创建专家团"), call propose_expert_team. Always present team members using their localized names (e.g. 中文名如「产品经理」、「代码审查工程师」) alongside their slug, duties, and reasons in your chat preview. Do NOT tell the user to click non-existent links; instead, inform them that they can review the draft and say "确认" when satisfied. When the user explicitly confirms (e.g. says "确认", "就按这个", "满意", "打开弹窗"), call open_expert_team_editor (or open_custom_expert_editor), which will present an interactive confirmation card before popping up the full editor dialog.'
     },
   })
 }

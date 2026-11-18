@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { apply } from './index.js'
 import type { Context } from '@deepseek-ai/cordis'
 
-describe('agency-agents HTTP 管理路由 (sidebar-entry & online-update)', () => {
+describe('agency-agents HTTP 管理路由 (sidebar-entry)', () => {
   function setupHarness(configOverrides: Record<string, unknown> = {}, extraCtx: Record<string, unknown> = {}) {
     const routes = new Map<string, (req: any, res: any) => Promise<void>>()
     const mockSettingsState: Record<string, any> = {
@@ -12,7 +12,7 @@ describe('agency-agents HTTP 管理路由 (sidebar-entry & online-update)', () =
       enabledTeams: [],
     }
 
-    const VOLATILE_PATHS = new Set(['enabled', 'customExperts', 'customTeams', 'enabledTeams', 'sidebarEntry', 'entryLocation', 'onlineUpdate', 'composerRecommend'])
+    const VOLATILE_PATHS = new Set(['enabled', 'customExperts', 'customTeams', 'enabledTeams', 'sidebarEntry', 'entryLocation', 'composerRecommend'])
 
     const mockCtx = {
       webServer: {
@@ -56,7 +56,6 @@ describe('agency-agents HTTP 管理路由 (sidebar-entry & online-update)', () =
       enabledTeams: { get: () => mockSettingsState.enabledTeams },
       entryLocation: { get: () => mockSettingsState.entryLocation },
       sidebarEntry: { get: () => mockSettingsState.sidebarEntry },
-      onlineUpdate: { get: () => mockSettingsState.onlineUpdate },
       composerRecommend: { get: () => mockSettingsState.composerRecommend },
       ...configOverrides,
     }
@@ -142,28 +141,10 @@ describe('agency-agents HTTP 管理路由 (sidebar-entry & online-update)', () =
     expect(getRes2.json).toEqual({ ok: true, location: 'sidebar', enabled: true })
   })
 
-  it('online-update GET 与 POST 正常更新持久化', async () => {
-    const { routes, mockSettingsState } = setupHarness()
-    const handler = routes.get('/api/michengai/dsh-agency-agents/online-update')
-    expect(handler).toBeDefined()
-
-    // 1. GET 默认状态
-    const getRes = mockResponse()
-    await handler!(mockRequest('GET'), getRes)
-    expect(getRes.status).toBe(200)
-    expect(getRes.json).toEqual({ ok: true, enabled: true, locked: false })
-
-    // 2. POST 关闭
-    const postRes1 = mockResponse()
-    await handler!(mockRequest('POST', { enabled: false }), postRes1)
-    expect(postRes1.status).toBe(200)
-    expect(postRes1.json).toEqual({ ok: true, enabled: false })
-    expect(mockSettingsState.onlineUpdate).toBe(false)
-
-    // 3. GET 确认最新值
-    const getRes2 = mockResponse()
-    await handler!(mockRequest('GET'), getRes2)
-    expect(getRes2.json).toEqual({ ok: true, enabled: false, locked: false })
+  it('online-update 与 update 路由已废弃且不再挂载', async () => {
+    const { routes } = setupHarness()
+    expect(routes.has('/api/michengai/dsh-agency-agents/online-update')).toBe(false)
+    expect(routes.has('/api/michengai/dsh-agency-agents/update')).toBe(false)
   })
 
   it('安全防护：缺少 x-michengai-client 标记头应返回 403，非法 Content-Type 返回 415，超限返回 413', async () => {
@@ -196,24 +177,6 @@ describe('agency-agents HTTP 管理路由 (sidebar-entry & online-update)', () =
     const res = mockResponse()
     await handler!(mockRequest('GET'), res)
     expect(res.status).toBe(401)
-  })
-
-  it('宿主配置锁定 updater: false 时，online-update 拒绝修改并返回 403', async () => {
-    const { routes } = setupHarness({ updater: false })
-    const handler = routes.get('/api/michengai/dsh-agency-agents/online-update')
-    expect(handler).toBeDefined()
-
-    // 1. GET 提示 locked: true
-    const getRes = mockResponse()
-    await handler!(mockRequest('GET'), getRes)
-    expect(getRes.status).toBe(200)
-    expect(getRes.json).toEqual({ ok: true, enabled: false, locked: true })
-
-    // 2. POST 尝试修改返回 403
-    const postRes = mockResponse()
-    await handler!(mockRequest('POST', { enabled: true }), postRes)
-    expect(postRes.status).toBe(403)
-    expect(postRes.json.ok).toBe(false)
   })
 
   it('composer-recommend GET 与 POST 默认关闭并支持持久化更新', async () => {

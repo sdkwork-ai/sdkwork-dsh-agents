@@ -8,14 +8,16 @@
 
   **331 specialists · 5 built-in teams · Custom collaboration**
 
-  [简体中文](README.md) · [Expert roster](#expert-roster) · [Installation](#installation) · [Changelog](CHANGELOG.md) · [Apache-2.0](LICENSE)
+  [简体中文](README.zh-CN.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
+
+  [Expert roster](#expert-roster) · [Installation](#installation) · [Changelog](CHANGELOG.md) · [Apache-2.0](LICENSE)
 
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
   [![Bundled agents](https://img.shields.io/badge/Bundled%20agents-331-0f766e.svg)](#expert-roster)
   [![npm package](https://img.shields.io/npm/v/%40michengai%2Fdsh-agency-agents.svg?label=npm%20package)](https://www.npmjs.com/package/@michengai/dsh-agency-agents)
   [![npm downloads](https://img.shields.io/npm/dt/%40michengai%2Fdsh-agency-agents.svg?label=npm%20downloads)](https://www.npmjs.com/package/@michengai/dsh-agency-agents)
   [![DSH Web Plugin](https://img.shields.io/badge/DSH%20Web-Plugin-0f766e.svg)](https://github.com/MichengAI/dsh-agency-agents)
-  [![DSH supported through 0.2.2-rc.1](https://img.shields.io/badge/DSH-up%20to%200.2.2--rc.1-2563eb.svg)](#prerequisites)
+  [![DSH supported through 0.2.2-rc.3](https://img.shields.io/badge/DSH-up%20to%200.2.2--rc.3-2563eb.svg)](#prerequisites)
 </div>
 
 > DSH Agency Agents is a community-maintained DeepSeek Harness (DSH) plugin, not an official DeepSeek AI product.
@@ -30,7 +32,7 @@ Choose a specialist in DSH for code review, design, operations, or research. All
 - **Complete roster of 331 domain experts**: Covers 22 standard divisions from engineering, product, and design to marketing, sales, and legal, with instant prefix matching.
 - **Multi-agent team collaboration**: 5 high-impact built-in review teams and support for up to 100 custom teams with automated handoffs, parallel execution, or debate modes.
 - **Fast invocation in composer**: Summon specialists or teams via the `@` trigger or composer picker button, instantly inserting task examples without accidental sends.
-- **Enterprise control & security**: Toggle online updates or declare `updater: false` for strict platform lock; endpoints are guarded by token headers and content-type validation.
+- **Enterprise control & security**: Configure entry placement and task suggestions directly in the plugin workbench; endpoints are guarded by token headers and content-type validation.
 - **Reverse proxy compatibility**: Automatic URL base resolution (`document.baseURI`) ensures seamless operation behind prefix-stripping reverse proxies.
 
 ## Expert teams
@@ -100,7 +102,7 @@ Real-time expert and expert team suggestions displayed as a native dropdown at t
 - **One-Click Mention & Deduplication**: Click candidate items to insert references directly into the input via host `insertReference`; already referenced experts are automatically filtered out from suggestions, auto-dismissing on outside clicks or empty input;
 - **Dedicated Extension Toggle**: Toggle under **Settings → Plugins** (default off), supporting host volatile hot-reloading and persistence.
 
-> This README describes version 1.2.26. **This is a breaking upgrade: DeepSeek Harness 0.1.x is no longer supported.** Installation on an older host is rejected by the version gate. npm and GitHub Releases determine publication status. See the [changelog](CHANGELOG.md) for the full boundary. Expert and team settings are retained; back up settings before downgrading to 1.0.x.
+> This README describes version 1.2.34. **This is a breaking upgrade: DeepSeek Harness 0.1.x is no longer supported.** Installation on an older host is rejected by the version gate. npm and GitHub Releases determine publication status. See the [changelog](CHANGELOG.md) for the full boundary. Expert and team settings are retained; back up settings before downgrading to 1.0.x.
 ## Screenshots
 
 The screenshots below show the 1.0.0 interface in Chinese. Experts and expert teams share the same settings page.
@@ -151,7 +153,7 @@ DSH `dsh.client.inject` controls browser module loading order. Missing graph ent
 
 ## Installation
 
-Host compatibility: Full DeepSeek Harness `0.2.x` line (`>=0.2.0-rc.1 <0.3.0-0`), verified with `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-rc.1`–`0.2.1-rc.5`, and `0.2.2-rc.1`, and forwards-compatible with subsequent `0.2.x` RC releases without requiring routine plugin version bumps. Legacy versions and breaking changes in the `0.3.0` generation are rejected by the version gate. Expert and team settings are retained and do not need to be entered again. The host is supplied by your existing CLI or Desktop installation; the plugin does not install another copy.
+Host compatibility: Full DeepSeek Harness `0.2.x` line (`>=0.2.0-rc.1 <0.3.0-0`), verified with `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-rc.1`–`0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, and `0.2.2-rc.3`, and forwards-compatible with subsequent `0.2.x` RC releases without requiring routine plugin version bumps. Legacy versions and breaking changes in the `0.3.0` generation are rejected by the version gate. Expert and team settings are retained and do not need to be entered again. The host is supplied by your existing CLI or Desktop installation; the plugin does not install another copy.
 
 The installation commands below use the official npm registry.
 
@@ -184,28 +186,22 @@ The configuration output should contain `agency-agents` and `agency-agents-remot
 The plugin follows standard DSH bundle configuration conventions. Options are located at:
 > **Sidebar → Plugins → Click `@michengai/dsh-agency-agents`** (the host's `plugins.bundle.config` slot).
 
-Two native switches are available:
+Two native settings rows are available:
 
-### 1. Sidebar Entry (`sidebarEntry`)
+### 1. Entry Placement (`entryLocation` / `sidebarEntry`)
+- **Default**: Settings only (`settings`) or both surfaces (`both`)
+- **Description**: Configure where the expert entry appears (supports `both`, `sidebar`, or `settings`).
+- **Effect**:
+  - When the sidebar is enabled, clicking the icon opens the management workbench in the main workspace with a **960px centered container** (matching host plugin conventions), eliminating vertical scrolling limitations in narrow modal dialogs;
+  - At least one entry is retained to ensure continuous access; disabling the sidebar entry unregisters the slot cleanly and safely resets the active panel if open;
+  - State is synchronized live across both entry points.
+
+### 2. Task Expert Suggestions (`composerRecommend`)
 - **Default**: Disabled (`false`)
-- **Description**: Displays a persistent **Agency Experts** navigation icon in the host's left primary sidebar.
+- **Description**: Automatically suggests matching specialists and teams above the composer when drafting tasks in conversations.
 - **Effect**:
-  - When enabled, clicking the sidebar icon opens the expert and team management page directly in the primary workspace with a **960px centered container** (matching host plugin manager conventions). This eliminates vertical scrolling constraints in narrow settings dialogs;
-  - When disabled, unregisters the sidebar entry cleanly (and resets active panel gracefully if currently viewing the panel, preventing blank views);
-  - The standard **Settings → Experts** view remains active either way, and state is synchronized live across both entry points.
-
-### 2. Online Updates (`onlineUpdate` / `updater`)
-- **Default**: Enabled (`true`)
-- **Description**: Controls whether the plugin checks for and installs updates from npm.
-- **Effect**:
-  - **Dynamic UI Sync**: Disabling the toggle hides the **Check for updates** button and version badge in the header immediately without requiring a full page reload;
-  - **Endpoint Guard**: When disabled, the update API route returns `HTTP 403` for all check and install requests, preventing unreviewed updates;
-  - **Host / Platform Lock**: For curated plugin indexes (such as VibeDev) or restricted enterprise environments, this can be locked directly via Cordis configuration (bundle patch) without needing UI interaction:
-    ```yaml
-    updater: false
-    ```
-    Once configured, the built-in updater is disabled at startup and the update action stays hidden.
-  - **Update Modes**: When a newer release is available, **Update automatically** runs only when the DSH CLI or Desktop update service is available; otherwise, the dialog provides a profile-specific manual command to copy and run.
+  - When enabled, real-time candidate suggestions pop up above the composer as you type, inserting with a single click;
+  - Runs local token-free inference with zero network overhead.
 
 ## Usage
 
@@ -813,6 +809,7 @@ Evaluating sources and synthesizing evidence into traceable findings.
 | `provider` | `spawn` | DSH subagent provider; `fork` also works when it supports persona and tool filtering. |
 | `divisions` | 22 standard divisions | Top-level divisions to scan. |
 | `maxDepth` | Unset | Positive absolute subagent-depth limit. |
+| `summonTaskMaxChars` | `3000` | Per-brief Unicode character limit for domain expert summoning (clamped to 200–4000). |
 
 Set `AGENCY_AGENTS_ROOT` to use an external expert directory. Persona bodies from that directory are injected as the child system prompt, so load them only from a trusted source. The provider must support persona and tool filtering. `summon_experts` accepts at most 8 experts with a concurrency of 4 and still returns successful answers when some experts fail.
 

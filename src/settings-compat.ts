@@ -122,12 +122,10 @@ export function readAgencySettings(config: object, locale: 'zh' | 'en' = 'zh'): 
     enabledTeams?: unknown
     entryLocation?: unknown
     sidebarEntry?: unknown
-    onlineUpdate?: unknown
     composerRecommend?: unknown
   }
   const rawLocation = unwrapLive(record.entryLocation)
   const rawSidebar = unwrapLive(record.sidebarEntry)
-  const rawUpdate = unwrapLive(record.onlineUpdate)
   const rawRecommend = unwrapLive(record.composerRecommend)
   const location = (rawLocation === 'both' || rawLocation === 'sidebar' || rawLocation === 'settings')
     ? rawLocation
@@ -139,7 +137,6 @@ export function readAgencySettings(config: object, locale: 'zh' | 'en' = 'zh'): 
     enabledTeams: stringList(unwrapLive(record.enabledTeams)),
     entryLocation: location,
     sidebarEntry: typeof rawSidebar === 'boolean' ? rawSidebar : (location !== 'settings'),
-    onlineUpdate: typeof rawUpdate === 'boolean' ? rawUpdate : undefined,
     composerRecommend: typeof rawRecommend === 'boolean' ? rawRecommend : undefined,
   }
   validateAgencySettings(value, locale)
@@ -250,16 +247,6 @@ export async function recoverImportedAgencySettings(
   parse: (text: string) => unknown = parseHostYaml,
   locale: 'zh' | 'en' = 'zh',
 ): Promise<void> {
-  // 根上下文同 hmrStore 走 rootOf；loader 用 reflect.get 动态读取（属性式读取
-  // 在宿主 Cordis 4.1 下会抛 inject 错误），等待宿主完成一次性 settings 导入。
-  // 测试可能传入只有部分表面的 mock，reflect 缺失时与旧属性读取一样视为无 loader。
-  const loader = (rootOf(ctx) as { reflect?: { get?: (name: string, strict?: boolean) => unknown } })
-    .reflect?.get?.('loader', false) as { await?: () => Promise<unknown> } | undefined
-  try {
-    await loader?.await?.()
-  } catch {
-    // Loader 失败时仍尝试读取已经改名的旧文件。
-  }
   if (isCancelled()) return
   const home = profileHome(ctx)
   if (home === undefined) return
@@ -387,20 +374,6 @@ export async function setAgencyEntryLocation(ctx: Context, namespace: string, lo
 export async function setAgencySidebarEntry(ctx: Context, namespace: string, enabled: boolean): Promise<boolean> {
   if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean')
   await setAgencyEntryLocation(ctx, namespace, enabled ? 'both' : 'settings')
-  return enabled
-}
-
-export async function setAgencyOnlineUpdate(ctx: Context, namespace: string, enabled: boolean): Promise<boolean> {
-  if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean')
-  const settings = (ctx as { settings?: LiveSettingsWriter }).settings
-  const revision = settings?.describe?.().find((item) => item.ns === namespace)?.revision
-  await writeLiveSettings(ctx, async () => {
-    if (typeof settings?.mutate === 'function') {
-      await settings.mutate(namespace, [{ op: 'set', path: ['onlineUpdate'], value: enabled }], revision)
-    } else if (typeof settings?.update === 'function') {
-      await settings.update(namespace, { onlineUpdate: enabled }, revision)
-    }
-  })
   return enabled
 }
 

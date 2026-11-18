@@ -8,14 +8,16 @@
 
   **331 位专业智能体 · 5 个内置专家团 · 自定义协作**
 
-  [English](README.en.md) · [专家列表](#专家列表) · [安装](#安装) · [更新日志](CHANGELOG.zh-CN.md) · [Apache-2.0](LICENSE)
+  [简体中文](README.zh-CN.md) · [English](README.en.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português](README.pt.md)
+
+  [专家列表](#专家列表) · [安装](#安装) · [更新日志](CHANGELOG.zh-CN.md) · [Apache-2.0](LICENSE)
 
   [![许可证：Apache-2.0](https://img.shields.io/badge/许可证-Apache--2.0-blue.svg)](LICENSE)
   [![内置智能体](https://img.shields.io/badge/内置智能体-331-0f766e.svg)](#专家列表)
   [![npm package](https://img.shields.io/npm/v/%40michengai%2Fdsh-agency-agents.svg?label=npm%20package)](https://www.npmjs.com/package/@michengai/dsh-agency-agents)
   [![npm 下载量](https://img.shields.io/npm/dt/%40michengai%2Fdsh-agency-agents.svg?label=npm%20%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://www.npmjs.com/package/@michengai/dsh-agency-agents)
   [![DSH Web Plugin](https://img.shields.io/badge/DSH%20Web-Plugin-0f766e.svg)](https://github.com/MichengAI/dsh-agency-agents)
-  [![DSH 支持至 0.2.2-rc.1](https://img.shields.io/badge/DSH-%E6%94%AF%E6%8C%81%E8%87%B3%200.2.2--rc.1-2563eb.svg)](#前置条件)
+  [![DSH 支持至 0.2.2-rc.3](https://img.shields.io/badge/DSH-%E6%94%AF%E6%8C%81%E8%87%B3%200.2.2--rc.3-2563eb.svg)](#前置条件)
 </div>
 
 > DSH Agency Agents 是社区维护的 DeepSeek Harness（DSH）插件，并非 DeepSeek AI 官方产品。
@@ -30,7 +32,7 @@
 - **331 位全领域专家名册**：涵盖工程、设计、产品、营销、法务、金融等 22 个标准分区，支持中英文关键词与拼音前缀秒级即时检索。
 - **专家团（Teams）多角色协同**：内置 5 大高频业务团队，支持自定义最多 100 个协作团队；支持根据任务复杂度自动选择接力推进、多路并行或深度评审协作模式。
 - **会话输入框快捷召唤**：支持对话框左侧机器人按钮快速点选，或在正文中输入 `@` 快捷呼出专家及团队名册，无缝填入任务示例。
-- **企业级配置与安全防御**：支持在插件详情页独立开启/关闭在线更新，支持静态配置 `updater: false` 进行平台级只读锁定；接口全面接入同源与 Content-Type 防御。
+- **企业级配置与安全防御**：支持在插件详情页独立配置入口展示位置与任务智能推荐；接口全面接入同源与 Content-Type 防御。
 - **反向代理部署无缝兼容**：自动相对页面基准地址解析 API 端点，支持无损部署在剥离前缀的反向代理（如 `/app/dsh/`）之后。
 
 ## 专家团
@@ -100,7 +102,7 @@
 - **一键引用与智能排除**：点击推荐项自动通过宿主原生 `insertReference` 将实体插入输入框草稿中，已引用的专家自动从推荐列表中排除，输入清空或点击外部时自动收起；
 - **独立配置开关**：在「设置 → 插件」扩展配置中提供「任务智能推荐」独立开关（默认关闭），支持实时热更新并持久化保存。
 
-> 本 README 描述 1.2.26。**这是破坏性升级：不再支持 DeepSeek Harness 0.1.x。** 在旧宿主上安装会被版本门拒绝。正式发行以 npm 和 GitHub Releases 为准。完整边界见[更新日志](CHANGELOG.zh-CN.md)。专家和专家团配置仍保留；回退 1.0.x 前先备份设置。
+> 本 README 描述 1.2.34。**这是破坏性升级：不再支持 DeepSeek Harness 0.1.x。** 在旧宿主上安装会被版本门拒绝。正式发行以 npm 和 GitHub Releases 为准。完整边界见[更新日志](CHANGELOG.zh-CN.md)。专家和专家团配置仍保留；回退 1.0.x 前先备份设置。
 ## 界面预览
 
 以下为 1.0.0 中文界面截图，专家与专家团共用同一个设置页面。
@@ -151,7 +153,7 @@ DSH 的 `dsh.client.inject` 声明浏览器模块的加载顺序；宿主模块�
 
 ## 安装
 
-宿主支持范围：DeepSeek Harness `0.2.x` 全系列（`>=0.2.0-rc.1 <0.3.0-0`），已验证兼容 `0.2.0-rc.1`、`0.2.0-rc.2`、`0.2.1-rc.1`～`0.2.1-rc.5`、`0.2.2-rc.1`，并自动支持后续全部 0.2.x RC 版本，同代宿主升级无需重复等待发版。早期版本与 `0.3.0` 代际破坏性更新由版本门拦截。专家和专家团配置仍保留，不需要重新录入。主程序由现有 CLI 或 Desktop 提供，插件不会另行安装。
+宿主支持范围：DeepSeek Harness `0.2.x` 全系列（`>=0.2.0-rc.1 <0.3.0-0`），已验证兼容 `0.2.0-rc.1`、`0.2.0-rc.2`、`0.2.1-rc.1`～`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.2`、`0.2.2-rc.3`，并自动支持后续全部 0.2.x RC 版本，同代宿主升级无需重复等待发版。早期版本与 `0.3.0` 代际破坏性更新由版本门拦截。专家和专家团配置仍保留，不需要重新录入。主程序由现有 CLI 或 Desktop 提供，插件不会另行安装。
 
 以下安装命令使用官方 npm 源。
 
@@ -184,28 +186,22 @@ dsh --profile web --dump-config
 插件遵循 DSH 官方扩展配置规范，配置项位于：
 > **主界面侧边栏「插件」→ 点击 `@michengai/dsh-agency-agents` 详情页**（对应宿主 `plugins.bundle.config` 槽位）。
 
-此处提供两个原生扁平行开关：
+此处提供两个原生扁平行配置：
 
-### 1. 侧边栏入口 (`sidebarEntry`)
+### 1. 入口展示位置 (`entryLocation` / `sidebarEntry`)
+- **默认状态**：仅设置（`settings`）或两边显示（`both`）
+- **功能说明**：灵活配置智能体专家入口的呈现位置（支持「两边显示」、「仅侧边栏」或「仅设置」）。
+- **生效效果**：
+  - 开启侧边栏后，在侧边栏点击即可直达专家与团队管理中心，并在主工作区以 **960px 居中版心**（对齐官方插件管理与市场规范）展开完整大面板，彻底告别在设置弹窗狭窄视口内滚动的局限；
+  - 至少保留一处入口，避免无法打开面板；关闭侧栏后安全注销侧栏槽位，若当前正停留在专家面板会自动安全切回默认视图；
+  - 两处界面数据与状态 100% 实时同步。
+
+### 2. 任务智能推荐 (`composerRecommend`)
 - **默认状态**：关闭（`false`）
-- **功能说明**：在宿主左侧主导航栏增加常驻的 **「专家」** 图标入口。
+- **功能说明**：控制是否在主会话聊天框键入任务内容时，在输入框上方自动提供匹配的专家与专家团队智能推荐下拉项。
 - **生效效果**：
-  - 开启后，在侧边栏点击即可直达专家与团队管理中心，并在主工作区以 **960px 居中版心**（对齐官方插件管理与市场规范）展开完整大面板，彻底告别在设置弹窗狭窄视口内滚动的局限；
-  - 关闭后安全注销侧栏槽位（若当前正停留在专家面板，会自动安全切回默认视图，防止悬空和白屏）；
-  - 无论是否开启侧栏入口，DSH 原有的「设置 → 专家」入口始终保留，两处界面数据与状态 100% 实时同步。
-
-### 2. 在线更新 (`onlineUpdate` / `updater`)
-- **默认状态**：开启（`true`）
-- **功能说明**：控制是否允许在线检查并安装专家团队的新版本。
-- **生效效果**：
-  - **界面联动**：关闭开关后，专家面板标题旁的「检查更新」按钮与版本提示徽标将即时隐藏，无需刷新页面；开启后自动恢复展示；
-  - **接口安全拦截**：关闭后，服务端的更新路由对任何版本检查和安装请求均返回 `HTTP 403` 禁用状态，彻底杜绝在插件内安装未审核版本；
-  - **宿主/平台级锁定**：面向精选插件索引（如 VibeDev）或企业安全合规环境，支持直接在 Cordis 配置文件（bundle patch）中声明锁定：
-    ```yaml
-    updater: false
-    ```
-    配置生效后，更新器在启动时即被完全禁用，且更新开关处于锁定状态。
-  - **更新模式**：发现新版后，只有检测到 DSH CLI 或 Desktop 更新服务时才可使用“自动更新”；其他环境会在弹窗中提供可复制、与当前 Profile 对应的手工更新命令。
+  - 开启后，输入任务草稿实时推荐最匹配的专家与专家团，点击即可一键插入；
+  - 本地轻量切词与零 Token 计算，无网络请求与模型调用开销。
 
 ## 使用
 
@@ -813,6 +809,7 @@ dsh --profile web --dump-config
 | `provider` | `spawn` | DSH 子代理 provider，可使用支持 persona 与工具过滤的 `fork`。 |
 | `divisions` | 22 个标准分区 | 需要扫描的顶层分区。 |
 | `maxDepth` | 未设置 | 正整数形式的绝对子代理深度上限。 |
+| `summonTaskMaxChars` | `3000` | 单条专家召唤任务的 Unicode 字符上限（200–4000 范围钳制）。 |
 
 也可设置 `AGENCY_AGENTS_ROOT` 环境变量指定外部专家目录。外部目录里的 persona 正文会注入为子代理系统提示，只应从可信来源加载。子代理 provider 必须支持 persona 和工具过滤能力。`summon_experts` 一次最多 8 名专家，并发 4，部分失败仍返回成功结果。
 

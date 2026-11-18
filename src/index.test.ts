@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import z from '@deepseek-ai/schemastery'
-import { Config, SUMMON_EXPERTS_CONCURRENCY, SUMMON_EXPERTS_MAX, SUMMON_TASK_MAX_CHARS, apply, inject, liveSchemaField, loadCatalog, createAgencyPersonaSource, mapPool, parseFrontmatter, resolveCatalogRoot, resolveExpert, sanitize, stripBom, toSummonItemResult, truncate, unquote, validateSummonSpecs } from './index.js'
+import { Config, SUMMON_EXPERTS_CONCURRENCY, SUMMON_EXPERTS_MAX, SUMMON_TASK_MAX_CHARS, apply, inject, liveSchemaField, loadCatalog, createAgencyPersonaSource, mapPool, normalizeSummonTaskMaxChars, parseFrontmatter, resolveCatalogRoot, resolveExpert, sanitize, stripBom, toSummonItemResult, truncate, unquote, validateSummonSpecs } from './index.js'
 import AgencyAgentsRemote, { readExpertPrompt, readLocalizedExpertPrompt } from './remote.js'
 import { AGENCY_AGENTS_DESCRIPTORS } from './remote-contract.js'
 import { buildExpertMentionLexicon, buildExpertReference, CARD_SETTINGS_CSS, compareExpertName, COMPOSER_CSS, EXPERT_AVATAR_POOL_INDEXES, expertAvatarIndex, expertAvatarIndexForDivision, expertDivisionFilterValues, expertMentionFromReference, filterExperts, formatExpertMention, formatExpertMentionInsertion, inject as clientInject, inputTriggerCandidateName, inputTriggerPickName, inputTriggerSourceId, inputTriggerSourceName, insertExpertReference, insertSelectedExpert, keepComposerFocus, matchExpertQuery, normalizeExpertQuery, resolveExpertMenuPosition, resolveReferenceInsertionTarget, resolveTargetSessionId, SETTINGS_CSS, SETTINGS_GITHUB_LINKS, sortExpertsByEnabled, sortExpertsByOrder, writeErrorKey, writeErrorMessage } from './client/index.js'
@@ -250,6 +250,47 @@ describe('DSH settings 兼容层', () => {
       await recoverImportedAgencySettings(ctx, 'agency-agents', () => ({ enabled: [] }), () => false, JSON.parse)
       expect(written).toEqual([])
       expect(agencySettingsFromLegacyDocument({ 'agency-agents': { enabled: [1, 'reviewer'] } })?.enabled).toEqual(['reviewer'])
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  it('无 settings.yaml.imported 或已有配置时直接返回，绝不调用 loader.await', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'aag-legacy-guard-'))
+    const loaderAwait = vi.fn().mockResolvedValue(undefined)
+    const ctx = {
+      root: { loader: { await: loaderAwait } },
+      get: (name: string) => name === 'profileContext' ? { home } : undefined,
+      settings: {
+        describe: () => [{ ns: 'agency-agents', revision: 1 }],
+        update: vi.fn(),
+      },
+    } as unknown as Context
+
+    try {
+      // 场景 1: settings.yaml.imported 不存在
+      await recoverImportedAgencySettings(ctx, 'agency-agents', () => ({ enabled: [] }), () => false, JSON.parse)
+      expect(loaderAwait).not.toHaveBeenCalled()
+
+      // 场景 2: settings.yaml.imported 存在但当前配置已有数据
+      await writeFile(join(home, 'settings.yaml.imported'), JSON.stringify({
+        'agency-agents': { enabled: ['reviewer'] },
+      }), 'utf8')
+      await recoverImportedAgencySettings(ctx, 'agency-agents', () => ({ enabled: ['existing-expert'] }), () => false, JSON.parse)
+      expect(loaderAwait).not.toHaveBeenCalled()
+
+      // 场景 3: settings.yaml.imported 存在且当前配置为空，成功恢复且全程不调用 loader.await
+      const updateFn = vi.fn().mockResolvedValue(undefined)
+      const ctxWithUpdate = {
+        ...ctx,
+        settings: {
+          describe: () => [{ ns: 'agency-agents', revision: 1 }],
+          update: updateFn,
+        },
+      } as unknown as Context
+      await recoverImportedAgencySettings(ctxWithUpdate, 'agency-agents', () => ({ enabled: [] }), () => false, JSON.parse)
+      expect(updateFn).toHaveBeenCalledWith('agency-agents', { enabled: ['reviewer'], customExperts: [], customTeams: [], enabledTeams: [] }, 1)
+      expect(loaderAwait).not.toHaveBeenCalled()
     } finally {
       await rm(home, { recursive: true, force: true })
     }
@@ -590,6 +631,59 @@ describe('summon_expert', () => {
     expect(disposed).toBe(true)
   })
 
+  it('0.2.2-rc.2+ 宿主通过扁平 SubagentActivationSpec 调用 startActivation（无 request 包装）', async () => {
+    const tools: unknown[] = []
+    const controller = new AbortController()
+    const parentAgent = { id: 'lead-1' }
+    let activationSpec: Record<string, any> | undefined
+    let disposed = false
+    const ctx = {
+      tools: { register: (tool: unknown) => tools.push(tool) },
+      subagents: {
+        getProvider: () => ({ capabilities: { depthLimit: true } }),
+        namesOf: () => ({ self: 'lead' }),
+        rootOf: () => parentAgent,
+        startActivation: async (spec: Record<string, any>) => {
+          activationSpec = spec
+          return {
+            childId: spec.childId ?? 'child-rc2',
+            name: 'agent-1',
+            result: Promise.resolve({ output: [{ type: 'text', text: 'done rc2' }], stopReason: 'completed' }),
+            dispose: async () => { disposed = true },
+          }
+        },
+      },
+      systemPrompt: { section: () => undefined },
+      on: () => () => undefined,
+      settings: alphaSettings(['reviewer']),
+      inject: (_deps: unknown, cb: (sctx: unknown) => void) => {
+        cb({ settings: { register: () => ({ get: () => ({ enabled: ['reviewer'] }), watch: () => () => {} }) }, effect: () => () => {} })
+      },
+      reflect: { provide: () => undefined },
+    } as unknown as Context
+
+    applyOnHost(ctx, { root: dir, provider: 'spawn', divisions: ['engineering'], maxDepth: 2 })
+    const summon = tools.find((tool) => (tool as { name?: string }).name === 'summon_expert') as {
+      execute: (args: unknown, exec: unknown) => Promise<unknown>
+    }
+
+    await expect(summon.execute(
+      { expert: 'reviewer', task: 'review flat spec' },
+      { agent: parentAgent, signal: controller.signal },
+    )).resolves.toEqual({ expert: 'Reviewer', answer: 'done rc2' })
+    expect(activationSpec).toMatchObject({
+      provider: 'spawn',
+      label: 'Reviewer',
+      parent: parentAgent,
+      prompt: [{ type: 'text', text: 'review flat spec' }],
+      maxDepth: 2,
+      signal: controller.signal,
+      delivery: 'caller',
+    })
+    expect(activationSpec).not.toHaveProperty('request')
+    expect(disposed).toBe(true)
+  })
+
   it('专家子代理通过 startActivation 首次启动与后续冷恢复均注入人格并限制召唤工具', async () => {
     const tools: unknown[] = []
     const listeners: Array<(event: any) => any> = []
@@ -893,7 +987,7 @@ describe('summon_expert', () => {
     expect(prompt).toContain('call summon_expert or summon_experts immediately')
     expect(prompt).toContain('Do not call list_experts, read the project, or do the analysis yourself')
     expect(prompt).toContain(String(SUMMON_TASK_MAX_CHARS))
-    expect(SUMMON_TASK_MAX_CHARS).toBe(2000)
+    expect(SUMMON_TASK_MAX_CHARS).toBe(3000)
 
     const descriptions = ['summon_expert', 'summon_experts'].map((name) => {
       const tool = tools.find((item) => item.name === name)
@@ -905,6 +999,35 @@ describe('summon_expert', () => {
       expect(description).not.toContain('Include all necessary context')
       expect(description).not.toContain('complete, self-contained')
     }
+  })
+
+  it('支持自定义 summonTaskMaxChars 且在 200–4000 内钳制', async () => {
+    expect(normalizeSummonTaskMaxChars(undefined)).toBe(3000)
+    expect(normalizeSummonTaskMaxChars(null)).toBe(3000)
+    expect(normalizeSummonTaskMaxChars(2500)).toBe(2500)
+    expect(normalizeSummonTaskMaxChars(50)).toBe(200)
+    expect(normalizeSummonTaskMaxChars(10000)).toBe(4000)
+    expect(normalizeSummonTaskMaxChars('invalid')).toBe(3000)
+
+    const tools: Array<{ name: string; parameters?: Record<string, unknown>; execute?: unknown }> = []
+    const ctx = {
+      tools: { register: (tool: { name: string; parameters?: Record<string, unknown>; execute?: unknown }) => tools.push(tool) },
+      subagents: { getProvider: () => undefined },
+      systemPrompt: { section: () => undefined },
+      on: () => () => undefined,
+      settings: alphaSettings(['reviewer']),
+      inject: (_deps: unknown, cb: (sctx: unknown) => void) => {
+        cb({ settings: { register: () => ({ get: () => ({ enabled: ['reviewer'] }), watch: () => () => {} }) }, effect: () => () => {} })
+      },
+      reflect: { provide: () => undefined },
+    } as unknown as Context
+
+    applyOnHost(ctx, { root: dir, provider: 'spawn', divisions: ['engineering'], summonTaskMaxChars: 2500 })
+    const single = tools.find((item) => item.name === 'summon_expert')
+    const json = JSON.stringify(single?.parameters ?? {})
+    expect(json).toContain('2500 characters')
+    const summon = single as { execute: (args: unknown, exec: unknown) => Promise<unknown> }
+    await expect(summon.execute({ expert: 'reviewer', task: '汉'.repeat(2501) }, { agent: {} })).rejects.toThrow(formatHost('en', 'error.taskLimit', { length: 2501, max: 2500 }))
   })
 
   it('在注册阶段拒绝零 maxDepth，避免第一次委派才失败', () => {
@@ -1543,13 +1666,23 @@ describe('@ 菜单分组标题本地化', () => {
     expect(PACKAGE_MANIFEST.packageManager).toBe('pnpm@11.22.0')
   })
 
-  it('DSH 开发依赖固定为 0.2.2-rc.1', () => {
+  it('DSH 开发依赖固定为 0.2.2-rc.3', () => {
+    // CI 宿主矩阵会把基线改写为目标版本，此时只要求各宿主包版本一致。
+    const matrixHost = process.env.DSH_HOST_MATRIX
+    const versions = new Set<string>()
     for (const [name, version] of Object.entries(PACKAGE_MANIFEST.devDependencies ?? {})) {
       if (name.startsWith('@deepseek-ai/dsh-')) {
-        expect(version).toBe('0.2.2-rc.1')
+        // dsh-error 自 0.2.2-rc.2 才发布，矩阵在更早版本上保留基线值。
+        if (name === '@deepseek-ai/dsh-error') continue
+        versions.add(version)
+        if (!matrixHost) expect(version).toBe('0.2.2-rc.3')
       }
     }
-    expect(PACKAGE_MANIFEST.devDependencies?.['@deepseek-ai/dsh-client-ui-primitives']).toBe('0.2.2-rc.1')
+    if (matrixHost) {
+      expect(versions.size).toBe(1)
+      return
+    }
+    expect(PACKAGE_MANIFEST.devDependencies?.['@deepseek-ai/dsh-client-ui-primitives']).toBe('0.2.2-rc.3')
   })
 
   it('设置标题提供 GitHub 与问题反馈两个入口', () => {
@@ -1938,6 +2071,9 @@ describe('validateSummonSpecs', () => {
     expect(() => validateSummonSpecs([{ expert: 'reviewer', task: '   ' }], 'zh')).toThrow(formatHost('zh', 'error.taskEmpty', { index: 1 }))
     const longTask = '汉'.repeat(SUMMON_TASK_MAX_CHARS + 1)
     expect(() => validateSummonSpecs([{ expert: 'reviewer', task: longTask }], 'en')).toThrow(formatHost('en', 'error.taskTooLong', { index: 1, length: SUMMON_TASK_MAX_CHARS + 1, max: SUMMON_TASK_MAX_CHARS }))
+    // 支持自定义 maxChars
+    expect(() => validateSummonSpecs([{ expert: 'reviewer', task: '汉'.repeat(2501) }], 'zh', 2500)).toThrow(formatHost('zh', 'error.taskTooLong', { index: 1, length: 2501, max: 2500 }))
+    expect(validateSummonSpecs([{ expert: 'reviewer', task: '汉'.repeat(2500) }], 'zh', 2500)).toHaveLength(1)
   })
 
   it('拒绝缺失或空白的专家名', () => {

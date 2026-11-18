@@ -34,9 +34,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { ZH_NAME, ZH_DIVISION, EN_DIVISION } from '../names.js'
 import { EXPERT_AVATAR_URLS } from './avatars.js'
 import { ROSTER } from './roster.js'
-import { zh, en, type AgencyKey } from './locales.js'
+import { de, en, es, fr, ja, pt, ru, zh, NS, resolveSummaryTotalKey, type AgencyKey } from './locales.js'
 import { TYPERT_REMOTE, type AgencyAgentsEnabledState, type AgencyAgentsPrompt } from './remote.js'
-import { observePluginUpdate, type PluginUpdateIconName, PLUGIN_UPDATE_TOGGLE_EVENT } from './plugin-update-ui.js'
 import { setupSidebarEntry } from './bundle-config.js'
 import { resolveApiUrl } from '../api-base.js'
 export { resolveApiUrl }
@@ -60,36 +59,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 const PLUGIN_ID = '@michengai/dsh-agency-agents'
-/** 本插件客户端词条字典命名空间。 */
-const NS = 'agency'
-
-const UPDATE_ICON_PATHS: Record<PluginUpdateIconName, readonly string[]> = {
-  refresh: ['M13.5 5.5V2.5m0 0h-3m3 0-2.1 2.1A5.5 5.5 0 1 0 13.2 12'],
-  download: ['M8 2v8m0 0 3-3m-3 3-3-3M3 13v2h10v-2'],
-  copy: ['M5 5h8v8H5z', 'M3 3h8'],
-  close: ['m4 4 8 8M12 4 4 12'],
-}
-
-export function createPluginUpdateIcon(name: PluginUpdateIconName): HTMLElement {
-  const element = document.createElement('span')
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('viewBox', '0 0 16 16')
-  svg.setAttribute('width', '16')
-  svg.setAttribute('height', '16')
-  svg.setAttribute('fill', 'none')
-  svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '1.5')
-  svg.setAttribute('stroke-linecap', 'round')
-  svg.setAttribute('stroke-linejoin', 'round')
-  svg.setAttribute('aria-hidden', 'true')
-  for (const d of UPDATE_ICON_PATHS[name]) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path.setAttribute('d', d)
-    svg.append(path)
-  }
-  element.append(svg)
-  return element
-}
 
 interface LineIconProps {
   readonly className?: string
@@ -574,11 +543,12 @@ export const COMPOSER_CSS = '.aag-btn-wrap{position:relative;order:1;display:inl
 // 设置页版式对齐 dsh-skills-manager：工具栏 + 汇总条 + 分组卡片 + 行内启停按钮。
 export const SETTINGS_CSS = `
 .aag-section{box-sizing:border-box;display:flex;min-width:0;width:100%;flex-direction:column;gap:16px;padding:0 0 32px;color:var(--dsw-alias-label-primary)}
+.aag-section-card{box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:18px 20px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg,16px);margin-bottom:16px}
 .aag-toolbar{display:flex;flex-direction:column;gap:8px;padding-bottom:12px}
 .aag-title-row{display:flex;align-items:center;gap:8px 12px;min-width:0;flex-wrap:wrap}
 .aag-settings-links{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.aag-settings-links>span[data-mpi-check]{display:inline-flex;align-items:center}
-.aag-title{margin:0;font-size:20px;line-height:28px;font-weight:650;letter-spacing:-.2px}
+.aag-title{margin:0;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.4px}
+.aag-desc{margin:0;font-size:13px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .aag-note{overflow:hidden;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
 .aag-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
 .aag-filters{display:flex;align-items:flex-end;gap:10px;width:100%;min-width:0;max-width:100%}
@@ -664,7 +634,7 @@ const BUNDLE_CONFIG_CSS = `
 export const RECOMMEND_BAR_CSS = `
 .aag-hero-options-recommend{display:inline-flex;align-items:center}
 .aag-dock-right-recommend{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance, 20px) - var(--dsh-composer-side-clearance, 20px));max-width:var(--dsh-composer-card-max-width,768px);margin:0 auto;display:flex;justify-content:flex-end;align-items:center;padding:2px 0 6px}
-.aag-hero-options-recommend [role="menu"],.aag-dock-right-recommend [role="menu"]{max-height:min(380px, calc(100vh - 180px))}
+.aag-recommend-menu-list,.aag-hero-options-recommend [role="menu"],.aag-dock-right-recommend [role="menu"]{max-height:min(380px, calc(100vh - 180px))}
 .aag-hero-recommend-seat{max-width:min(100%,240px);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;font-weight:500;padding:0 4px 0 8px;animation:aagFadeIn 160ms cubic-bezier(0,0,0.2,1)}
 .aag-hero-recommend-seat:hover:not(:disabled),.aag-hero-recommend-seat[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .aag-hero-recommend-icon{color:var(--dsw-alias-brand,#3b82f6);flex:none}
@@ -770,10 +740,10 @@ function githubMark16(): React.ReactElement {
     React.createElement('path', { fill: 'currentColor', d: 'M8 0a8 8 0 0 0-2.53 15.59c.4.074.547-.173.547-.385 0-.19-.007-.693-.01-1.36-2.226.484-2.695-1.073-2.695-1.073-.364-.924-.89-1.17-.89-1.17-.726-.496.055-.486.055-.486.803.056 1.225.824 1.225.824.714 1.223 1.872.87 2.328.665.072-.517.28-.87.508-1.07-1.777-.202-3.645-.888-3.645-3.956 0-.874.31-1.588.823-2.148-.083-.202-.357-1.017.078-2.12 0 0 .672-.215 2.2.82A7.65 7.65 0 0 1 8 4.8c.68.003 1.365.092 2.004.27 1.527-1.035 2.197-.82 2.197-.82.437 1.103.162 1.918.08 2.12.513.56.822 1.274.822 2.148 0 3.076-1.872 3.752-3.654 3.95.288.248.544.735.544 1.482 0 1.07-.01 1.932-.01 2.195 0 .214.144.463.55.384A8.001 8.001 0 0 0 8 0Z' }))
 }
 
-const IconEditOutlineRegular = (primitives as Record<string, unknown>).IconEditOutlineRegular as React.ComponentType<{ size?: number }>
+const IconEditOutlineRegular = ((primitives as Record<string, unknown>).IconListPenOutlineMedium || (primitives as Record<string, unknown>).IconListPenOutlineRegular || (primitives as Record<string, unknown>).IconEditOutlineRegular) as React.ComponentType<{ size?: number }>
 
 function feedbackMark16(): React.ReactElement {
-  return React.createElement(IconEditOutlineRegular, { size: 16 })
+  return React.createElement(IconEditOutlineRegular, { size: 14 })
 }
 
 function settingsGithubLinks(t: TranslateNS<'agency'>): React.ReactElement {
@@ -1343,6 +1313,7 @@ function ExpertCardsSettings(props: PropsLocale<'agency'> & {
   onSummary?: (value: { total: number; enabled: number }) => void
   remote: AgencyAgentsRemoteApi
   getActive: () => 'zh' | 'en'
+  getLocale?: () => string
   onEnabledChange?: (enabled: ReadonlySet<string>) => void
   closeSettings?: () => void
 }): React.ReactElement {
@@ -1647,17 +1618,18 @@ function ExpertCardsSettings(props: PropsLocale<'agency'> & {
       }
     }
 
-    if (!props.sharedHeader) nodes.push(React.createElement('div', { key: 'toolbar', className: 'aag-toolbar' },
+    if (!props.sharedHeader) nodes.push(React.createElement('div', { key: 'toolbar-card', className: 'aag-section-card' }, React.createElement('div', { key: 'toolbar', className: 'aag-toolbar' },
       React.createElement('div', { className: 'aag-title-row' },
         React.createElement('h2', { className: 'aag-title' }, props.t('settings.title')),
         settingsGithubLinks(props.t)),
+      React.createElement('p', { className: 'aag-desc' }, props.t('settings.desc')),
       React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
         React.createElement('span', { className: 'aag-header-stat' },
           React.createElement('strong', null, total),
-          props.t(total === 1 ? 'summary.total.one' : 'summary.total.other', { count: total })),
+          props.t(resolveSummaryTotalKey(total, props.getLocale?.() ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'en'), { count: total })),
         React.createElement('span', { className: 'aag-header-stat' },
           props.t('summary.enabledPrefix'),
-          React.createElement('strong', null, enabledCount)))))
+          React.createElement('strong', null, enabledCount))))))
     const filterActions = React.createElement('div', { className: 'aag-filter-actions' },
       React.createElement(BulkActionMenu, {
         label: props.t('settings.bulk.menu'),
@@ -1807,8 +1779,12 @@ export function AgencySettingsPanel(props: React.ComponentProps<typeof ExpertCar
   })
   // 两个名册都保持挂载，切换时不丢失筛选，也不重新等待第一次加载。
   return React.createElement('section', { className: 'aag-section aag-library-shell' },
-    React.createElement('header', { className: 'aag-toolbar' }, React.createElement('div', { className: 'aag-title-row' },
-      React.createElement('h2', { className: 'aag-title' }, props.t('settings.title')), settingsGithubLinks(props.t))),
+    React.createElement('div', { className: 'aag-section-card' },
+      React.createElement('header', { className: 'aag-toolbar' },
+        React.createElement('div', { className: 'aag-title-row' },
+          React.createElement('h2', { className: 'aag-title' }, props.t('settings.title')),
+          settingsGithubLinks(props.t)),
+        React.createElement('p', { className: 'aag-desc' }, props.t('settings.desc')))),
     React.createElement('div', { className: 'aag-library-navigation' }, navigation),
     React.createElement('div', { id: 'aag-library-panel-experts', hidden: view !== 'experts' }, React.createElement(ExpertCardsSettings, { ...props, closeSettings: props.closeSettings ?? (props as { close?: () => void }).close, sharedHeader: true, onSummary: setExpertSummary })),
     React.createElement('div', { id: 'aag-library-panel-teams', hidden: view !== 'teams' }, React.createElement(TeamLocaleContext.Provider, { value: props.getActive() }, React.createElement(TeamsPanel, {
@@ -2008,9 +1984,9 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     return () => { tag.remove() }
   }, 'agency-agents: style')
 
-  // 注册双语词条；t 为稳定引用（调用时读取当前 locale），locale 切换由
+  // 注册 8 语词条；t 为稳定引用（调用时读取当前 locale），locale 切换由
   // framework 以 (namespace, revision) 重新派生注入的 t 并触发重渲染。
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'agency-agents: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'agency-agents: dictionaries')
   const t = ctx.locale.bind(NS)
   const getActive = (): 'zh' | 'en' => ctx.locale.getSnapshot().active === 'en' ? 'en' : 'zh'
   installSettingsNavIcon(ctx)
@@ -2159,25 +2135,11 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       onEnabledChange: updateEnabledForMentions,
       prepareTeamSelection: bindExpertInsertion().prepareTeamSelection,
     }),
-    onOnlineUpdateChange: () => {
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(PLUGIN_UPDATE_TOGGLE_EVENT))
-    },
   })
   ctx.effect(() => () => {
     sidebarController.destroy()
     unmountSettingsSection?.()
   }, 'agency-agents: sidebar entry')
-
-  ctx.effect(() => observePluginUpdate({
-    endpoint: '/api/michengai/dsh-agency-agents/update',
-    packageName: '@michengai/dsh-agency-agents',
-    titleRowSelector: '.aag-title-row',
-    linksSelector: '.aag-settings-links',
-    zhName: '专家',
-    enName: 'Experts',
-    createIcon: createPluginUpdateIcon,
-    isEnabled: () => sidebarController.isOnlineUpdateEnabled(),
-  }), 'agency-agents: plugin update ui')
 
   let offSettingsSection: (() => void) | null = null
   let offSettingsIcon: (() => void) | null = null

@@ -96,7 +96,11 @@ it('registerSettingsSection 兼顾回退仅暴露 specDynamic 的测试/实验�
 }, 20000)
 
 it('applySettingsNavIcon 在老宿主带 aria-hidden 图标容器下正常打上 marker，在新宿主带 navIcon 时自动清除 marker', async () => {
-  const { applySettingsNavIcon, NAV_ICON_MARKER } = await import('./client/settings-nav-icon.js')
+  const { applySettingsNavIcon, NAV_ICON_MARKER, NAV_ICON_CSS } = await import('./client/settings-nav-icon.js')
+
+  // 防御检查：样式规则严禁包含未限定 marker 的裸 .dcu-sb-row::before，防止破坏 Codex UI 的拖拽与状态线
+  expect(NAV_ICON_CSS).toContain(`.dcu-sb-row[${NAV_ICON_MARKER}]::before`)
+  expect(NAV_ICON_CSS).not.toMatch(/(^|[^[])\.dcu-sb-row::before/)
 
   // 1. 老宿主：按钮包含原生齿轮 span（带 aria-hidden="true"），不得误判为已有插槽图标
   const oldHostIconSpan = {
@@ -144,4 +148,39 @@ it('applySettingsNavIcon 在老宿主带 aria-hidden 图标容器下正常打上
 
   expect(applySettingsNavIcon(newHostButton, () => '专家')).toBe(true)
   expect(newHostButton.hasAttribute(NAV_ICON_MARKER)).toBe(false)
+
+  // 3. 移动端抽屉/侧栏入口防御：在移动端 role="dialog" 抽屉下，侧栏按钮绝不能被打上 marker，且已有残留必须自愈清理
+  const sidebarGlyph = {
+    tagName: 'SPAN',
+    className: 'dcu-sb-glyph',
+    getAttribute(name: string) { return name === 'aria-hidden' ? 'true' : null },
+  }
+  const sidebarTitle = { textContent: '专家' }
+  const sidebarAttributes = new Map([['data-aag-nav-icon', '']])
+  const mobileSidebarButton = {
+    className: 'dcu-sb-row dcu-sb-more-item',
+    textContent: '专家',
+    children: [sidebarGlyph, sidebarTitle],
+    closest(selector: string) {
+      if (selector.includes('.dcu-sb-root') || selector.includes('.dcu-sidebar-nav-root')) return {}
+      return null
+    },
+    matches(selector: string) {
+      return selector.includes('.dcu-sb-row')
+    },
+    querySelector(selector: string) {
+      if (selector === 'span') return sidebarTitle
+      if (selector.includes('glyph') || selector.includes('dcu-sb-glyph')) return sidebarGlyph
+      return null
+    },
+    hasAttribute(name: string) { return sidebarAttributes.has(name) },
+    getAttribute(name: string) { return sidebarAttributes.get(name) ?? null },
+    setAttribute(name: string, value: string) { sidebarAttributes.set(name, String(value)) },
+    removeAttribute(name: string) { sidebarAttributes.delete(name) },
+  } as unknown as Element
+
+  expect(applySettingsNavIcon(mobileSidebarButton, () => '专家')).toBe(true)
+  expect(mobileSidebarButton.hasAttribute(NAV_ICON_MARKER)).toBe(false)
+  expect(applySettingsNavIcon(mobileSidebarButton, () => '专家')).toBe(false)
+  expect(mobileSidebarButton.hasAttribute(NAV_ICON_MARKER)).toBe(false)
 })

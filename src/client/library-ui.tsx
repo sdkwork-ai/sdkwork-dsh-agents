@@ -29,7 +29,7 @@ export function LibraryEditorFooter(props: {
   return (
     <footer
       className="aag-custom-footer"
-      inert={props.inert ?? false}
+      {...(props.inert ? { inert: '' } : {})}
     >
       <p className="aag-note">{props.help}</p>
       <div>

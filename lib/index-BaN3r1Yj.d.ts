@@ -1,5 +1,6 @@
 import schema from "@deepseek-ai/schemastery";
 import { Context } from "@deepseek-ai/cordis";
+import "@deepseek-ai/dsh-settings";
 //#region src/names.d.ts
 /** 智能体 slug（文件名去 .md）→ 中文名（现实岗位）。缺省时回退英文 frontmatter name。 */
 declare const ZH_NAME: Readonly<Record<string, string>>;
@@ -16,8 +17,12 @@ declare const DEFAULT_DIVISIONS: string[];
 declare const SUMMON_EXPERTS_MAX = 8;
 /** 批量召唤的并发上限。 */
 declare const SUMMON_EXPERTS_CONCURRENCY = 4;
-/** 单条任务的 Unicode 码点上限。本机实测单条约 3200 字时工具 JSON 仍合法，约 7200 字时未转义引号会让宿主在专家启动前结束回合。2000 是给目标、约束和路径留的余量，不是算出的安全边界。 */
-declare const SUMMON_TASK_MAX_CHARS = 2000;
+/** 单条任务的 Unicode 码点上限。默认 3000。本机实测单条约 3200 字时工具 JSON 仍合法，约 7200 字时未转义引号会让宿主在专家启动前结束回合。 */
+declare const SUMMON_TASK_MAX_CHARS = 3000;
+declare const SUMMON_TASK_MIN_LIMIT = 200;
+declare const SUMMON_TASK_MAX_LIMIT = 4000;
+/** 规范化单条任务字符上限：缺省使用默认 3000，越界值钳制在 200–4000 安全区间。 */
+declare function normalizeSummonTaskMaxChars(value: unknown): number;
 /** 已校验的批量召唤条目。 */
 interface SummonExpertSpec {
   readonly expert: unknown;
@@ -31,7 +36,7 @@ interface SummonExpertItemResult {
   readonly error?: string;
 }
 /** 校验批量召唤入参：非空、数量上限、专家名非空、任务非空且不超过码点上限。 */
-declare function validateSummonSpecs(specs: unknown, locale: LocaleId): SummonExpertSpec[];
+declare function validateSummonSpecs(specs: unknown, locale: LocaleId, maxChars?: number): SummonExpertSpec[];
 /** 受限并发地映射异步任务，结果顺序与输入一致。 */
 declare function mapPool<T, R>(items: readonly T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]>;
 /** 把单次专家运行结果收成批量条目；失败时保留原始查询作为专家名。 */
@@ -60,9 +65,9 @@ interface Config {
   divisions: string[];
   /** 可选的正整数绝对子代理深度上限；未设置时沿用 provider 的默认行为。 */
   maxDepth?: number;
-  updater?: boolean;
-  onlineUpdate?: boolean;
   sidebarEntry?: boolean;
+  /** 单条专家召唤任务的 Unicode 码点上限。默认 3000，超出 200–4000 安全区间时会被自动钳制。 */
+  summonTaskMaxChars?: number;
 }
 declare const AGENCY_PERSONA_SERVICE = "agencyAgentsPersona";
 /** 仅当宿主 schemastery 提供 volatile() 时，把字段标成可实时更新。插件自己的新版本不能代替宿主判断。 */
@@ -112,4 +117,4 @@ declare function resolveExpert<T extends {
 }>(experts: readonly T[], query: unknown, locale?: LocaleId): T;
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { stripBom as C, validateSummonSpecs as D, unquote as E, ZH_NAME as O, sanitize as S, truncate as T, parseFrontmatter as _, SUMMON_EXPERTS_CONCURRENCY as a, resolveCatalogRoot as b, SummonExpertItemResult as c, createAgencyPersonaSource as d, inject as f, name as g, mapPool as h, DEFAULT_DIVISIONS as i, SummonExpertSpec as l, loadCatalog as m, AgencyPersonaSource as n, SUMMON_EXPERTS_MAX as o, liveSchemaField as p, Config as r, SUMMON_TASK_MAX_CHARS as s, AGENCY_PERSONA_SERVICE as t, apply as u, readExpertPrompt as v, toSummonItemResult as w, resolveExpert as x, readLocalizedExpertPrompt as y };
+export { validateSummonSpecs as A, resolveCatalogRoot as C, toSummonItemResult as D, stripBom as E, truncate as O, readLocalizedExpertPrompt as S, sanitize as T, mapPool as _, SUMMON_EXPERTS_CONCURRENCY as a, parseFrontmatter as b, SUMMON_TASK_MAX_LIMIT as c, SummonExpertSpec as d, apply as f, loadCatalog as g, liveSchemaField as h, DEFAULT_DIVISIONS as i, ZH_NAME as j, unquote as k, SUMMON_TASK_MIN_LIMIT as l, inject as m, AgencyPersonaSource as n, SUMMON_EXPERTS_MAX as o, createAgencyPersonaSource as p, Config as r, SUMMON_TASK_MAX_CHARS as s, AGENCY_PERSONA_SERVICE as t, SummonExpertItemResult as u, name as v, resolveExpert as w, readExpertPrompt as x, normalizeSummonTaskMaxChars as y };
